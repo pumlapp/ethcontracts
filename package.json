@@ -4,5 +4,11 @@
   "main": "index.js",
   "repository": "git@github.com:pumlapp/ethcontracts.git",
   "author": "nickjjang <nickjang234@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.2.0",
+    "@truffle/hdwallet-provider": "^1.4.3",
+    "dotenv": "^10.0.0",
+    "truffle-plugin-verify": "^0.5.11"
+  }
 }
