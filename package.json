@@ -1,0 +1,8 @@
+{
+  "name": "ethcontracts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:pumlapp/ethcontracts.git",
+  "author": "nickjjang <nickjang234@gmail.com>",
+  "license": "MIT"
+}
