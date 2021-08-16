@@ -74,8 +74,7 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         address receiver,
         uint256 amount,
         uint256 commission,
-        uint256 royalties,
-        uint256 safetyCheckValue
+        uint256 royalties
     );
 
     function buy(uint256 _tokenId) public payable nonReentrant returns (bool) {
@@ -114,10 +113,8 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         emit PaymentToOwner(
             offer.creator,
             amountToPay,
-            //     paidPrice,
             commissionToPay,
-            royaltiesToPay,
-            amountToPay + ((paidPrice * commission) / 10000) // using safemath will trigger an error because of stack size
+            royaltiesToPay
         );
 
         accumulatedCommission = accumulatedCommission + commissionToPay;
