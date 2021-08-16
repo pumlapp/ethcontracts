@@ -28,15 +28,15 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         uint256 _price
     ) public {
         IERC721 asset = IERC721(_assetAddress);
-        require(asset.ownerOf(_tokenId) == msg.sender, "Not the owner");
+        require(asset.ownerOf(_tokenId) == msg.sender, "PumlNFTMarket: You are not the owner");
         require(
             asset.getApproved(_tokenId) == address(this),
-            "NFT not approved"
+            "PumlNFTMarket: NFT not approved"
         );
 
         // Could not be used to update an existing offer (#02)
         Offer memory previous = offers[_tokenId];
-        require(previous.status == false, "An active offer already exists");
+        require(previous.status == false, "PumlNFTMarket: An active offer already exists");
 
         // First create the offer
         Offer memory offer = Offer({
@@ -52,14 +52,14 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
 
     function removeFromSale(uint256 _tokenId) public {
         Offer memory offer = offers[_tokenId];
-        require(msg.sender == offer.creator, "You are not the owner");
+        require(msg.sender == offer.creator, "PumlNFTMarket: You are not the owner");
         offer.status = false;
         offers[_tokenId] = offer;
     }
 
     // Changes the default commission. Only the owner of the marketplace can do that. In basic points
     function setCommission(uint256 _commission) public onlyOwner {
-        require(_commission <= 5000, "Commission too high");
+        require(_commission <= 5000, "PumlNFTMarket: Commission too high");
         commission = _commission;
     }
 
@@ -82,17 +82,17 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         uint256 paidPrice = msg.value;
 
         Offer memory offer = offers[_tokenId];
-        require(offer.status == true, "NFT not in direct sale");
+        require(offer.status == true, "PumlNFTMarket: NFT not on sale");
 
         uint256 price = offer.price;
-        require(paidPrice >= price, "Price is not enough");
+        require(paidPrice >= price, "PumlNFTMarket: Price is not enough");
 
         emit Claim(_tokenId, buyer);
 
         PumlNFT asset = PumlNFT(offer.assetAddress);
         asset.safeTransferFrom(offer.creator, buyer, _tokenId);
 
-        // now, pay the amount - commission - royalties to the auction creator
+        // now, pay the amount - commission - royalties to creator
         address payable creatorNFT = payable(asset.getCreator(_tokenId));
 
         uint256 commissionToPay = (paidPrice * commission) / 10000;
@@ -102,14 +102,15 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
             royaltiesToPay = (paidPrice * asset.getRoyalties(_tokenId)) / 10000;
 
             (bool success, ) = creatorNFT.call{value: royaltiesToPay}("");
-            require(success, "Transfer failed.");
+            require(success, "PumlNFTMarket: Transfer roaylties failed.");
 
             emit Royalties(creatorNFT, royaltiesToPay);
         }
         uint256 amountToPay = paidPrice - commissionToPay - royaltiesToPay;
 
         (bool success2, ) = offer.creator.call{value: amountToPay}("");
-        require(success2, "Transfer failed.");
+        require(success2, "PumlNFTMarket: Transfer payment failed.");
+
         emit PaymentToOwner(
             offer.creator,
             amountToPay,
