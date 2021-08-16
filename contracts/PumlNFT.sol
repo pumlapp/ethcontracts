@@ -52,7 +52,7 @@ contract PumlNFT is ERC721URIStorage, Ownable {
 
     function unlockContent(uint256 _tokenId) public view returns (string memory)
     {
-        require(this.ownerOf(_tokenId) == msg.sender, "Not the owner");
+        require(this.ownerOf(_tokenId) == msg.sender, "PumlNFT: Not the owner");
         return tokenMetadata[_tokenId].lockedContent;
     }
 }
