@@ -22,13 +22,17 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
 
     mapping(uint256 => Offer) public offers;
 
+    // seller call this to make his offer for token sale
     function createOffer(
-        address _assetAddress,
-        uint256 _tokenId,
-        uint256 _price
+        address _assetAddress, // PumlNFT's address
+        uint256 _tokenId, // token's id
+        uint256 _price // sale price in ether
     ) public {
         IERC721 asset = IERC721(_assetAddress);
-        require(asset.ownerOf(_tokenId) == msg.sender, "PumlNFTMarket: You are not the owner");
+        require(
+            asset.ownerOf(_tokenId) == msg.sender,
+            "PumlNFTMarket: You are not the owner"
+        );
         require(
             asset.getApproved(_tokenId) == address(this),
             "PumlNFTMarket: NFT not approved"
@@ -36,7 +40,10 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
 
         // Could not be used to update an existing offer (#02)
         Offer memory previous = offers[_tokenId];
-        require(previous.status == false, "PumlNFTMarket: An active offer already exists");
+        require(
+            previous.status == false,
+            "PumlNFTMarket: An active offer already exists"
+        );
 
         // First create the offer
         Offer memory offer = Offer({
@@ -50,9 +57,13 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         offers[_tokenId] = offer;
     }
 
+    // remove offer for sale
     function removeFromSale(uint256 _tokenId) public {
         Offer memory offer = offers[_tokenId];
-        require(msg.sender == offer.creator, "PumlNFTMarket: You are not the owner");
+        require(
+            msg.sender == offer.creator,
+            "PumlNFTMarket: You are not the owner"
+        );
         offer.status = false;
         offers[_tokenId] = offer;
     }
@@ -66,7 +77,7 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
     // Event triggered when buyer claims the NFT
     event Claim(uint256 auctionIndex, address claimer);
 
-     // Event triggered when a royalties payment is generated on sale
+    // Event triggered when a royalties payment is generated on sale
     event Royalties(address receiver, uint256 amount);
 
     // Event triggered when a payment to the owner is generated on sale
@@ -77,6 +88,7 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         uint256 royalties
     );
 
+    // buy NFT token
     function buy(uint256 _tokenId) public payable nonReentrant returns (bool) {
         address buyer = msg.sender;
         uint256 paidPrice = msg.value;
