@@ -68,7 +68,7 @@ contract PumlNFTMarket is Ownable, ReentrancyGuard {
         offers[_tokenId] = offer;
     }
 
-    // Changes the default commission. Only the owner of the marketplace can do that. In basic points
+    // set the commission for market - 100 means 1%, maximum is set by 50%
     function setCommission(uint256 _commission) public onlyOwner {
         require(_commission <= 5000, "PumlNFTMarket: Commission too high");
         commission = _commission;
