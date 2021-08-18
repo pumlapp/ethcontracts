@@ -19,7 +19,7 @@ contract PumlNFT is ERC721URIStorage, Ownable {
     mapping(uint256 => TokenData) tokenMetadata;
 
     constructor(string memory _baseTokenURI) ERC721("PumlNFT", "PNFT") {
-        _baseTokenURI = baseTokenURI;
+        baseTokenURI = _baseTokenURI;
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
