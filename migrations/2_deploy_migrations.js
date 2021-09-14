@@ -1,10 +1,7 @@
-const PumlNFT = artifacts.require("PumlNFT");
-const PumlNFTMarket = artifacts.require("PumlNFTMarket");
+var NFTToken = artifacts.require("PumlNFT");
+var engine = artifacts.require("Engine");
 
-module.exports = function (deployer, network, accounts) {
-    deployer.deploy(PumlNFT, "" /* token base URI */)
-    .then(() => PumlNFT.deployed())
-    .then((instance) => {
-        return deployer.deploy(PumlNFTMarket);
-    });
-}
+module.exports = function(deployer) {
+    deployer.deploy(NFTToken);
+    deployer.deploy(engine);
+};
