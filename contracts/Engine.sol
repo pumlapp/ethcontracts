@@ -11,8 +11,21 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 contract Engine is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
 
+    event OfferCreated(
+        uint256 _tokenId,
+        address _creator,
+        address _asset,
+        uint256 numCopies,
+        uint256 amount,
+        bool isSale
+    );
     // Event triggered when an auction is created
-    event AuctionCreated(uint256 _index, address _creator, address _asset);
+    event AuctionCreated(
+        uint256 _auctionId,
+        address _creator,
+        uint256 _tokenId,
+        uint256 _startPrice
+    );
     // Event triggered when an auction receives a bid
     event AuctionBid(uint256 _index, address _bidder, uint256 amount);
     // Event triggered when an ended auction winner claims the NFT
@@ -31,6 +44,7 @@ contract Engine is Ownable, ReentrancyGuard {
         uint256 royalties,
         uint256 safetyCheckValue
     );
+    event Buy(uint256 _index, address buyer, uint256 _amount);
 
     // Status of an auction, calculated using the start date, the duration and the current timeblock
     enum Status {
@@ -112,6 +126,14 @@ contract Engine is Ownable, ReentrancyGuard {
             );
         }
         offers[_tokenId] = offer;
+        emit OfferCreated(
+            _tokenId,
+            msg.sender,
+            _assetAddress,
+            1,
+            _price,
+            _isDirectSale
+        );
     }
 
     // returns the auctionId from the offerId
@@ -129,7 +151,7 @@ contract Engine is Ownable, ReentrancyGuard {
     function removeFromAuction(uint256 _tokenId) public {
         Offer memory offer = offers[_tokenId];
         require(msg.sender == offer.creator, "You are not the owner");
-        Auction memory auction = auctions[offer.tokenId];
+        Auction memory auction = auctions[offer.idAuction];
         require(auction.bidCount == 0, "Bids existing");
         offer.isAuction = false;
         offer.idAuction = 0;
@@ -225,6 +247,8 @@ contract Engine is Ownable, ReentrancyGuard {
             }
         }
 
+        emit Buy(_tokenId, msg.sender, msg.value);
+
         accumulatedCommission = accumulatedCommission.add(commissionToPay);
 
         offer.isAuction = false;
@@ -259,7 +283,7 @@ contract Engine is Ownable, ReentrancyGuard {
         auctions.push(auction);
         uint256 index = auctions.length.sub(1);
 
-        emit AuctionCreated(index, auction.creator, auction.assetAddress);
+        emit AuctionCreated(index, auction.creator, _assetId, _startPrice);
 
         return index;
     }
@@ -364,9 +388,9 @@ contract Engine is Ownable, ReentrancyGuard {
     // the commission of the marketplace is calculated, and the remaining funds
     // are transferred to the token owner
     // After this, the offer is disabled
-    function claimAsset(uint256 auctionIndex) public {
-        address winner = getWinner(auctionIndex);
-        require(winner == msg.sender, "You are not the winner of the auction");
+    function closeAuction(uint256 auctionIndex) public {
+        //    address winner = getWinner(auctionIndex);
+        //    require(winner == msg.sender, "You are not the winner of the auction");
         auctionTransferAsset(auctionIndex);
     }
 
@@ -375,66 +399,72 @@ contract Engine is Ownable, ReentrancyGuard {
     }
 
     function auctionTransferAsset(uint256 auctionIndex) private nonReentrant {
-        require(isFinished(auctionIndex), "The auction is still active");
-        Auction storage auction = auctions[auctionIndex];
-
+        // require(isFinished(auctionIndex), "The auction is still active");
         address winner = getWinner(auctionIndex);
+
+        Auction storage auction = auctions[auctionIndex];
 
         // the token could be sold in direct sale or the owner cancelled the auction
         Offer memory offer = offers[auction.assetId];
         require(offer.isAuction == true, "NFT not in auction");
 
-        PumlNFT asset = PumlNFT(auction.assetAddress);
+        if (auction.bidCount > 0) {
+            PumlNFT asset = PumlNFT(auction.assetAddress);
 
-        // #3, check if the asset owner had removed their approval or the offer creator is not the token owner anymore.
-        require(
-            asset.getApproved(auction.assetId) == address(this),
-            "NFT not approved"
-        );
-        require(
-            asset.ownerOf(auction.assetId) == auction.creator,
-            "Auction creator is not nft owner"
-        );
+            // #3, check if the asset owner had removed their approval or the offer creator is not the token owner anymore.
+            require(
+                asset.getApproved(auction.assetId) == address(this),
+                "NFT not approved"
+            );
+            require(
+                asset.ownerOf(auction.assetId) == auction.creator,
+                "Auction creator is not nft owner"
+            );
 
-        asset.safeTransferFrom(auction.creator, winner, auction.assetId);
+            asset.safeTransferFrom(auction.creator, winner, auction.assetId);
 
-        emit Claim(auctionIndex, winner);
+            emit Claim(auctionIndex, winner);
 
-        // now, pay the amount - commission - royalties to the auction creator
-        address payable creatorNFT = payable(asset.getCreator(auction.assetId));
-        uint256 commissionToPay = (auction.currentBidAmount.mul(commission)) /
-            10000;
-        uint256 royaltiesToPay = 0;
-        if (creatorNFT != auction.creator) {
-            // It is a resale. Transfer royalties
-            royaltiesToPay =
-                (
-                    auction.currentBidAmount.mul(
-                        asset.getRoyalties(auction.assetId)
-                    )
-                ) /
-                10000;
-            creatorNFT.transfer(royaltiesToPay);
-            emit Royalties(creatorNFT, royaltiesToPay);
+            // now, pay the amount - commission - royalties to the auction creator
+            address payable creatorNFT = payable(
+                asset.getCreator(auction.assetId)
+            );
+            uint256 commissionToPay = (
+                auction.currentBidAmount.mul(commission)
+            ) / 10000;
+            uint256 royaltiesToPay = 0;
+            if (creatorNFT != auction.creator) {
+                // It is a resale. Transfer royalties
+                royaltiesToPay =
+                    (
+                        auction.currentBidAmount.mul(
+                            asset.getRoyalties(auction.assetId)
+                        )
+                    ) /
+                    10000;
+                creatorNFT.transfer(royaltiesToPay);
+                emit Royalties(creatorNFT, royaltiesToPay);
+            }
+            uint256 amountToPay = auction
+                .currentBidAmount
+                .sub(commissionToPay)
+                .sub(royaltiesToPay);
+
+            (bool success, ) = auction.creator.call{value: amountToPay}("");
+            require(success, "Transfer failed.");
+            emit PaymentToOwner(
+                auction.creator,
+                amountToPay,
+                //  auction.currentBidAmount,
+                commissionToPay,
+                royaltiesToPay,
+                amountToPay + commissionToPay + royaltiesToPay
+            );
+
+            accumulatedCommission = accumulatedCommission.add(commissionToPay);
+
+            totalSales = totalSales.add(auction.currentBidAmount);
         }
-        uint256 amountToPay = auction.currentBidAmount.sub(commissionToPay).sub(
-            royaltiesToPay
-        );
-
-        (bool success, ) = auction.creator.call{value: amountToPay}("");
-        require(success, "Transfer failed.");
-        emit PaymentToOwner(
-            auction.creator,
-            amountToPay,
-            //  auction.currentBidAmount,
-            commissionToPay,
-            royaltiesToPay,
-            amountToPay + commissionToPay + royaltiesToPay
-        );
-
-        accumulatedCommission = accumulatedCommission.add(commissionToPay);
-
-        totalSales = totalSales.add(auction.currentBidAmount);
 
         offer.isAuction = false;
         offer.isOnSale = false;
@@ -452,7 +482,7 @@ contract Engine is Ownable, ReentrancyGuard {
         require(offer.isAuction, "Offer is not an auction");
         Auction memory auction = auctions[offer.idAuction];
 
-        returnLastBid(offer, auction);
+        if (auction.bidCount > 0) returnLastBid(offer, auction);
 
         offer.isAuction = false;
         offers[_tokenId] = offer;
@@ -465,10 +495,15 @@ contract Engine is Ownable, ReentrancyGuard {
         require(offer.isAuction, "Offer is not an auction");
         // #4. Only if there is at least a bid and the bid amount > 0, give it back to last bidder
         require(
-            auction.currentBidAmount != 0 && auction.bidCount > 0 && auction.currentBidOwner != address(0),
+            auction.currentBidAmount != 0 &&
+                auction.bidCount > 0 &&
+                auction.currentBidOwner != address(0),
             "No bids yet"
         );
-        require(offer.creator != auction.currentBidOwner, "Offer owner cannot retrieve own funds");
+        require(
+            offer.creator != auction.currentBidOwner,
+            "Offer owner cannot retrieve own funds"
+        );
         // return funds to the previuos bidder
         (bool success3, ) = auction.currentBidOwner.call{
             value: auction.currentBidAmount

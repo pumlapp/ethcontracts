@@ -33,7 +33,7 @@ contract PumlNFT is ERC721URIStorage {
         public
         returns (uint256)
     {
-        require(_royalties <9000, "Max royalties are 90%");
+        require(_royalties <=5000, "Max royalties are 50%");
 
         _tokenIds.increment();
 

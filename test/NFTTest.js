@@ -31,7 +31,8 @@ contract("PumlNFT Marketplace", accounts => {
   });
 
   it("Should create nft", async () => {
-    var tokenId = await instance.createItem("www.nftapi.puml.io", 200, "Hola 1", { from: owner });
+    var tokenId = await instance.createItem("www.nftapi.puml.io", 0, "Hola 1", { from: owner });
+    console.log(`GasUsed minting nft: ${tokenId.receipt.gasUsed}`);
     assert.notEqual(tokenId, null);
   });
 
@@ -42,7 +43,7 @@ contract("PumlNFT Marketplace", accounts => {
 
   it("Should create 3rd nft", async () => {
     var tokenIdResponse = await instance.createItem("www.nftapi.puml.io", 300, "hola 3", { from: owner });
-    console.log("TokenID = " + JSON.stringify(tokenIdResponse));
+    //  console.log("TokenID = " + JSON.stringify(tokenIdResponse));
     assert.equal(tokenIdResponse.logs[0].args.tokenId, 3);
   });
 
@@ -50,7 +51,7 @@ contract("PumlNFT Marketplace", accounts => {
     try {
       var tokenId = await instance.createItem("www.nftapi.puml.io", 9000, "hola 3", { from: owner });
     }
-    catch (error) { assert.equal(error.reason, "Max royalties are 90%"); }
+    catch (error) { assert.equal(error.reason, "Max royalties are 50%"); }
   });
 
   it("should create an auction", async function () {
@@ -58,9 +59,11 @@ contract("PumlNFT Marketplace", accounts => {
     let owner = await instance.ownerOf(2);
     assert.equal(owner, accounts[0]);
     // allow engine to transfer the nft
-    await instance.approve(engine.address, 2, { from: accounts[0] });
+    let approveIns = await instance.approve(engine.address, 2, { from: accounts[0] });
+    console.log(`GasUsed approving nft: ${approveIns.receipt.gasUsed}`);
     // create auction
-    await engine.createOffer(instance.address, 2, true, true, 100000000000, 0, 0, 10, { from: accounts[0] });
+    let createOffer = await engine.createOffer(instance.address, 2, true, true, 100000000000, 0, 0, 10, { from: accounts[0] });
+    console.log(`GasUsed creating offer: ${createOffer.receipt.gasUsed}`);
     // make sure auction was created
     let count = await engine.getTotalAuctions();
 
@@ -70,8 +73,16 @@ contract("PumlNFT Marketplace", accounts => {
     assert.equal(count, 1);
   });
 
+  it("should fail updating an existing offer", async function () {
+    try {
+      // update the offer
+      await engine.createOffer(instance.address, 2, true, true, 100000000111, 0, 0, 10, { from: accounts[0] });
+    }
+    catch (error) { assert.equal(error.reason, "An active offer already exists"); }
+  });
+
   it("should retreive the auctionID", async function () {
-    let idAuction = await engine.getAuctionId.call(3);
+    let idAuction = await engine.getAuctionId.call(2);
     assert.equal(idAuction, 0);
   });
 
@@ -137,9 +148,9 @@ contract("PumlNFT Marketplace", accounts => {
 
   it("should not let winner claim assets before finished", async function () {
     try {
-      await engine.claimAsset(0, { from: accounts[2] });
+      await engine.closeAuction(0, { from: accounts[2] });
     }
-    catch (error) { assert.equal(error.reason, "The auction is still active"); }
+    catch (error) { assert.equal(error.reason, "Auction not finished yet"); }
   });
 
   it("should get winner when finished", async function () {
@@ -148,12 +159,37 @@ contract("PumlNFT Marketplace", accounts => {
     assert.equal(winner, accounts[2]);
   });
 
-  it("only the winner can claim assets", async function () {
+  /*it("only the winner can claim assets", async function () {
     try {
-      await engine.claimAsset(0, { from: accounts[1] });
+      await engine.closeAuction(0, { from: accounts[1] });
     }
     catch (error) { assert.equal(error.reason, "You are not the winner of the auction"); }
   });
+*/
+
+
+  it("should fail if approval was removed", async function () {
+    try {
+      await instance.approve(accounts[7], 2, { from: accounts[0] });
+      await engine.closeAuction(0, { from: accounts[2] });
+    }
+    catch (error) {
+      assert.equal(error.reason, "NFT not approved");
+      await instance.approve(engine.address, 2, { from: accounts[0] });
+    }
+  });
+
+
+  /* it("should fail if nft owner changed", async function () {
+     try {
+       await instance.Transfer(accounts[0] , accounts[7] , 2, { from: accounts[0] });
+       await engine.closeAuction(0, { from: accounts[2] });
+     }
+     catch (error) { // assert.equal(error.reason, "NFT not approved"); 
+       console.log(error)
+   //  await instance.approve(engine.address, 2, { from: accounts[0] });
+   }
+   });*/
 
   it("should let winner claim assets", async function () {
     let balance = await web3.eth.getBalance(engine.address);
@@ -163,7 +199,7 @@ contract("PumlNFT Marketplace", accounts => {
     //   console.log(JSON.stringify(offer));
     const ownerBefore = await instance.ownerOf(2);
     assert.equal(ownerBefore, accounts[0]);
-    await engine.claimAsset(0, { from: accounts[2] });
+    await engine.closeAuction(0, { from: accounts[2] });
     const ownerAfter = await instance.ownerOf(2);
     assert.equal(ownerAfter, accounts[2]);
 
@@ -173,7 +209,7 @@ contract("PumlNFT Marketplace", accounts => {
 
   it("should not let winner claim assets a second time", async function () {
     try {
-      await engine.claimAsset(0, { from: accounts[2] });
+      await engine.closeAuction(0, { from: accounts[2] });
     }
     catch (error) { assert.equal(error.reason, "NFT not in auction"); }
   });
@@ -198,17 +234,19 @@ contract("PumlNFT Marketplace", accounts => {
   });
 
   it("Should transfer ownership when buying", async () => {
+    let totalSalesBefore = await engine.totalSales.call();
+
     const buyer = accounts[1];
     const ownerResult1 = await instance.ownerOf(1);
     let balanceIni = await web3.eth.getBalance(ownerResult1);
     let contractBalanceIni = await web3.eth.getBalance(instance.address);
     // allow engine to transfer the nft
     await instance.approve(engine.address, 1, { from: accounts[0] });
-    await engine.createOffer(instance.address, 1, true, false, 1000000000000, 0, 0, 0, { from: accounts[0] });
+    await engine.createOffer(instance.address, 1, true, false, web3.utils.toWei('1', 'milli'), 0, 0, 0, { from: accounts[0] });
     try { await engine.buy(1, { from: buyer, value: 32000000000 }); }
     catch (error) { assert.equal(error.reason, "Price is not enough"); }
 
-    await engine.buy(1, { from: buyer, value: 1000000000000 });
+    await engine.buy(1, { from: buyer, value: web3.utils.toWei('1', 'milli') });
 
     const ownerResult2 = await instance.ownerOf(1);
     let balanceEnd = await web3.eth.getBalance(ownerResult1);
@@ -218,6 +256,10 @@ contract("PumlNFT Marketplace", accounts => {
 
     let balance = await web3.eth.getBalance(engine.address);
     //   console.log("Balance contract = " + web3.utils.fromWei(balance, 'ether'));
+
+    let totalSales = await engine.totalSales.call();
+    // console.log("Total sales 1 " + totalSales + " total sales before " + totalSalesBefore + " + " + web3.utils.toWei('1', 'milli'));
+    assert.equal(totalSales.toString(), web3.utils.toBN(totalSalesBefore).add(web3.utils.toBN(web3.utils.toWei('1', 'milli'))).toString(), "Total sale not correct")
   });
 
   it("should allow changing the commission", async function () {
@@ -235,8 +277,7 @@ contract("PumlNFT Marketplace", accounts => {
     // create auction
     await engine.createOffer(instance.address, 3, true, true, 100000000000, 0, 0, 10, { from: accounts[0] });
     let idAuction = await engine.getAuctionId.call(3);
-    //   console.log("idAuction = " + idAuction);
-
+    console.log("***** idAuction = " + idAuction);
     // make sure auction was created
     let count = await engine.getTotalAuctions();
     assert.equal(count, 2);
@@ -261,13 +302,8 @@ contract("PumlNFT Marketplace", accounts => {
     console.log("bids Comm=" + web3.utils.fromWei(accumulatedCommisions));
   });
 
-  it("should get winner when finished", async function () {
-    await helper.advanceTimeAndBlock(20); // wait 20 seconds in the blockchain
-    var winner = await engine.getWinner(1);
-    assert.equal(winner, accounts[2]);
-  });
-
   it("should allow a direct sell while auctioning", async function () {
+    let totalSalesBefore = await engine.totalSales.call();
     let receipt = await engine.buy(3, { from: accounts[4], value: web3.utils.toWei('10', 'milli') });
     let gasUsed = receipt.receipt.gasUsed;
     console.log(`GasUsed on buy: ${receipt.receipt.gasUsed}`);
@@ -277,13 +313,23 @@ contract("PumlNFT Marketplace", accounts => {
 
     let accumulatedCommisions = await engine.accumulatedCommission.call();
     //  console.log("direct sell Comm=" + web3.utils.fromWei(accumulatedCommisions));
+
+    let totalSales = await engine.totalSales.call();
+    console.log("Total sales 2 " + totalSales);
+    assert.equal(totalSales.toString(), web3.utils.toBN(totalSalesBefore).add(web3.utils.toBN(web3.utils.toWei('10', 'milli'))).toString(), "Total sale not correct")
+  });
+
+  it("should get winner when finished", async function () {
+    await helper.advanceTimeAndBlock(20); // wait 20 seconds in the blockchain
+    var winner = await engine.getWinner(1);
+    assert.equal(winner, accounts[2]);
   });
 
   it("should not let winner claim the assets, as the auction was cancelled when the direct sale was made", async function () {
     const ownerBefore = await instance.ownerOf(3);
     assert.equal(ownerBefore, accounts[4]);
     try { // the error is triggered
-      await engine.claimAsset(1, { from: accounts[2] });
+      await engine.closeAuction(1, { from: accounts[2] });
     } catch (error) {
       assert.equal(error.reason, "NFT not in auction");
     }
@@ -304,11 +350,10 @@ contract("PumlNFT Marketplace", accounts => {
     let gasUsed = receipt.receipt.gasUsed;
     // create auction
     receipt = await engine.createOffer(instance.address, 3, true, true, web3.utils.toWei('10', 'milli'), 0, 0, 10, { from: accounts[4] });
+    let idAuction = await engine.getAuctionId.call(3);
+    console.log("***** idAuction2 = " + idAuction);
     gasUsed += receipt.receipt.gasUsed;
     console.log(`Total GasUsed on creating a resale: ${gasUsed}`);
-
-    let idAuction = await engine.getAuctionId.call(3);
-    //  console.log("idAuction = " + idAuction);
 
     // make sure auction was created
     let count = await engine.getTotalAuctions();
@@ -341,7 +386,6 @@ contract("PumlNFT Marketplace", accounts => {
     assert.equal(winner, accounts[2]);
   });
 
-
   it("Should return current time", async function () {
     let ahora = await engine.ahora();
     console.log("Time = " + ahora);
@@ -353,6 +397,7 @@ contract("PumlNFT Marketplace", accounts => {
     let accumulatedCommisions = await engine.accumulatedCommission.call();
     //    console.log("Balance contract claiming = " + web3.utils.fromWei(balance, 'ether') + " - Comm=" + web3.utils.fromWei(accumulatedCommisions));
     const idAuction = await engine.getAuctionId.call(3);
+    console.log("***** idAuction on claimautomatically = " + idAuction);
     const ownerBefore = await instance.ownerOf(3);
     const royalties = await instance.getRoyalties(3);
     // we set the commission to the 5%
@@ -364,7 +409,8 @@ contract("PumlNFT Marketplace", accounts => {
     //   console.log("Balance contract = " + web3.utils.fromWei(balance, 'ether'));
     // be sure that the token belongs to the account 4, that boughts it before
     assert.equal(ownerBefore, accounts[4]);
-    let receipt = engine.claimAsset(idAuction, { from: accounts[2] }).then(function (events) {
+    //  let receipt = engine.closeAuction(idAuction, { from: accounts[2] }).then(function (events) {
+    let receipt = engine.automaticSetWinner(idAuction, { from: accounts[0] }).then(function (events) {
       //    console.log("EVENTS "+ JSON.stringify(events.logs));
       assert.equal(events.logs.length, 3);
       // check that there was a royalties event, as it was a resale
@@ -435,4 +481,82 @@ contract("PumlNFT Marketplace", accounts => {
     console.log(`Total GasUsed on create: ${gasUsed}`);
   });
 
+  it("should create an offer for reselling an NFT and buy it to check royalties", async function () {
+    // make sure account[1] is owner of the book
+    let currentOwner = await instance.ownerOf(3);
+    const royalties = await instance.getRoyalties(3);
+    // allow engine to transfer the nft
+    let receipt = await instance.approve(engine.address, 3, { from: currentOwner });
+    let gasUsed = receipt.receipt.gasUsed;
+    // create auction
+    receipt = await engine.createOffer(instance.address, 3, true, false, web3.utils.toWei('100', 'milli'), 0, 0, 10, { from: currentOwner });
+
+    await engine.buy(3, { from: accounts[8], value: web3.utils.toWei('100', 'milli') }).then(function (events) {
+      //    console.log("EVENTS "+ JSON.stringify(events.logs));
+      assert.equal(events.logs.length, 4);
+      // check that there was a royalties event, as it was a resale
+      assert.equal(events.logs[1].event, "Royalties");
+      console.log("Royalties = " + web3.utils.hexToNumber(royalties));
+      console.log("Total paid = " + web3.utils.toWei('100', 'milli'))
+      console.log(web3.utils.hexToNumber(events.logs[1].args.amount));
+    });
+
+    let totalSales = await engine.totalSales.call();
+    console.log("Total sales final " + totalSales);
+  });
+
+  it("should fail if the owner changes outside the marketplace", async function () {
+    let ownerBefore = await instance.ownerOf(3);
+
+    await instance.approve(engine.address, 3, { from: ownerBefore });
+    await engine.createOffer(instance.address, 3, true, true, web3.utils.toWei('100', 'milli'), 0, 0, 10, { from: ownerBefore });
+
+    let offer = await engine.offers(3)
+
+    let balance1 = await web3.eth.getBalance(engine.address);
+
+    await engine.bid(offer.idAuction, { from: accounts[2], value: 1120000000000000 });
+
+    let balance2 = await web3.eth.getBalance(engine.address);
+
+    // the ownership is transferred
+    await instance.transferFrom(ownerBefore, accounts[7], 3, { from: ownerBefore });
+    try {
+      await engine.buy(3, { from: accounts[6], value: web3.utils.toWei('100', 'milli') })
+    }
+    catch (error) {
+      assert.equal(error.reason, "ERC721: transfer caller is not owner nor approved");
+    }
+
+    await engine.cancelAuctionOfToken(3)
+
+    let balance3 = await web3.eth.getBalance(engine.address);
+
+    console.log("balances 1=" + balance1 + " 2=" + balance2 + " 3=" + balance3)
+
+    let ownerAfter = await instance.ownerOf(3);
+    assert.equal(ownerAfter, accounts[7]);
+  });
+
+  it("should close if the auction ends without bids and create a new auction", async function () {
+    // make sure account[1] is owner of the book
+    let currentOwner = await instance.ownerOf(1);
+    // allow engine to transfer the nft
+    let receipt = await instance.approve(engine.address, 1, { from: currentOwner });
+    // create auction
+    receipt = await engine.createOffer(instance.address, 1, true, true, web3.utils.toWei('100', 'milli'), 0, 0, 10, { from: currentOwner });
+
+    await helper.advanceTimeAndBlock(20); // wait 20 seconds in the blockchain
+    await engine.closeAuction(5, { from: accounts[2] });
+
+    let offer = await engine.offers(1)
+    console.log(JSON.stringify(offer));
+
+    let auction = await engine.auctions(5)
+    console.log(JSON.stringify(auction))
+
+    receipt = await instance.approve(engine.address, 1, { from: currentOwner });
+    // create auction
+    receipt = await engine.createOffer(instance.address, 1, true, true, web3.utils.toWei('100', 'milli'), 0, 0, 10, { from: currentOwner });
+  });
 });
