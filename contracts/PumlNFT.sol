@@ -17,7 +17,7 @@ contract PumlNFT is ERC721URIStorage {
     }
     mapping(uint256 => TokenData) tokens;
 
-    constructor() ERC721("Puml NFT", "PUML") {}
+    constructor(string memory _name, string memory _symbol, string memory _des) ERC721(_name, _symbol, _des) {}
 
     function getCreator(uint256 _tokenId) public view returns (address) {
         return tokens[_tokenId].creator;
