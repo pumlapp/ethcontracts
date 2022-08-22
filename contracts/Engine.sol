@@ -5,11 +5,17 @@ pragma solidity 0.8.4;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./PumlNFT.sol";
+import "./PumlStake.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract Engine is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
+    PumlStake public stakePUMLx;
+
+    constructor(address _stakeAddress) {
+        stakePUMLx = PumlStake(_stakeAddress);
+    }
 
     event OfferCreated(
         uint256 _tokenId,
@@ -177,9 +183,13 @@ contract Engine is Ownable, ReentrancyGuard {
     // funds are transferred to the token owner.
     // is there is an auction open, the last bid amount is sent back to the last bidder
     // After that, the offer is cleared.
-    function buy(uint256 _tokenId) external payable nonReentrant {
+    function buy(uint256 _tokenId, address _buyerAddress) external payable nonReentrant {
         address buyer = msg.sender;
         uint256 paidPrice = msg.value;
+
+        if (_buyerAddress != address(0)) {
+            buyer = _buyerAddress;
+        }
 
         Offer memory offer = offers[_tokenId];
         require(offer.isOnSale == true, "NFT not in direct sale");
@@ -247,7 +257,7 @@ contract Engine is Ownable, ReentrancyGuard {
             }
         }
 
-        emit Buy(_tokenId, msg.sender, msg.value);
+        emit Buy(_tokenId, buyer, msg.value);
 
         accumulatedCommission = accumulatedCommission.add(commissionToPay);
 
@@ -290,7 +300,13 @@ contract Engine is Ownable, ReentrancyGuard {
 
     // At the end of the call, the amount is saved on the marketplace wallet and the previous bid amount is returned to old bidder
     // except in the case of the first bid, as could exists a minimum price set by the creator as first bid.
-    function bid(uint256 auctionIndex) public payable nonReentrant {
+    function bid(uint256 auctionIndex, address _bidderAddress) public payable nonReentrant {
+        address bidder = msg.sender;
+
+        if (_bidderAddress != address(0)) {
+            bidder = _bidderAddress;
+        }
+
         Auction storage auction = auctions[auctionIndex];
         require(auction.creator != address(0), "Cannot bid. Error in auction");
         require(isActive(auctionIndex), "Bid not active");
@@ -317,10 +333,10 @@ contract Engine is Ownable, ReentrancyGuard {
         }
         // register new bidder
         auction.currentBidAmount = msg.value;
-        auction.currentBidOwner = payable(msg.sender);
+        auction.currentBidOwner = payable(bidder);
         auction.bidCount = auction.bidCount.add(1);
 
-        emit AuctionBid(auctionIndex, msg.sender, msg.value);
+        emit AuctionBid(auctionIndex, bidder, msg.value);
     }
 
     function getTotalAuctions() public view returns (uint256) {
@@ -471,58 +487,67 @@ contract Engine is Ownable, ReentrancyGuard {
         offers[auction.assetId] = offer;
     }
 
-    //Call this method
-    function cancelAuctionOfToken(uint256 _tokenId)
-        external
-        onlyOwner
-        nonReentrant
-    {
-        Offer memory offer = offers[_tokenId];
-        // is there is an auction open, we have to give back the last bid amount to the last bidder
-        require(offer.isAuction, "Offer is not an auction");
-        Auction memory auction = auctions[offer.idAuction];
+    //stake NFT
+    
+    function stakeNFT(
+        address _assetAddress,
+        address _to, 
+        uint256[] memory tokenIds,
+        uint256 collect,
+        uint256 feeward
+    ) external payable nonReentrant {
 
-        if (auction.bidCount > 0) returnLastBid(offer, auction);
-
-        offer.isAuction = false;
-        offers[_tokenId] = offer;
+        uint256 amount;
+        ERC721 token = ERC721(_assetAddress);
+        for (uint256 i = 0; i < tokenIds.length; i += 1) {
+            // Transfer user's NFTs to the staking contract
+            token.safeTransferFrom(msg.sender, _to, tokenIds[i]);
+            // Increment the amount which will be staked
+            amount += 1;
+            // Save who is the staker/depositor of the token
+            stakePUMLx.setStakedAssets(tokenIds[i], msg.sender);
+        }
+        _stakeNFT(amount);
+        stakePUMLx.setUserRewardUpdate(msg.sender, collect, feeward);
+        emit StakedNFT(msg.sender, amount, tokenIds);
     }
 
-    function returnLastBid(Offer memory offer, Auction memory auction)
-        internal
-    {
-        // is there is an auction open, we have to give back the last bid amount to the last bidder
-        require(offer.isAuction, "Offer is not an auction");
-        // #4. Only if there is at least a bid and the bid amount > 0, give it back to last bidder
-        require(
-            auction.currentBidAmount != 0 &&
-                auction.bidCount > 0 &&
-                auction.currentBidOwner != address(0),
-            "No bids yet"
-        );
-        require(
-            offer.creator != auction.currentBidOwner,
-            "Offer owner cannot retrieve own funds"
-        );
-        // return funds to the previuos bidder
-        (bool success3, ) = auction.currentBidOwner.call{
-            value: auction.currentBidAmount
-        }("");
-        require(success3, "Transfer failed.");
-        emit ReturnBidFunds(
-            offer.idAuction,
-            auction.currentBidOwner,
-            auction.currentBidAmount
-        );
+    function withdrawNFT(
+        address _assetAddress, 
+        address _from, 
+        uint256[] memory tokenIds,
+        uint256 collect,
+        uint256 feeward
+    ) public payable nonReentrant {
+
+        uint256 amount;
+        ERC721 token = ERC721(_assetAddress);
+        for (uint256 i = 0; i < tokenIds.length; i += 1) {
+            // Check if the user who withdraws is the owner
+            require(
+                stakePUMLx.getStakedAssets(tokenIds[i]) == msg.sender,
+                "Staking: Not the staker of the token"
+            );
+            // Transfer NFTs back to the owner
+            token.safeTransferFrom(_from, msg.sender, tokenIds[i]);
+            // Increment the amount which will be withdrawn
+            amount += 1;
+            // Cleanup stakedAssets for the current tokenId
+            stakePUMLx.setStakedAssets(tokenIds[i], address(0));
+        }
+        _withdrawNFT(amount);
+        stakePUMLx.setUserRewardUpdate(msg.sender, collect, feeward);
+        emit WithdrawnNFT(msg.sender, amount, tokenIds);
     }
 
-    // This method is only callable by the marketplace owner and transfer funds from
-    // the marketplace to the caller.
-    // It us used to move the funds from the marketplace to the investors
-    function extractBalance() public nonReentrant onlyOwner {
-        address payable me = payable(msg.sender);
-        (bool success, ) = me.call{value: accumulatedCommission}("");
-        require(success, "Transfer failed.");
-        accumulatedCommission = 0;
+    function _stakeNFT(uint256 _amount) internal {
+        stakePUMLx.setBalancesNFT(msg.sender, _amount, true);
     }
+
+    function _withdrawNFT(uint256 _amount) internal {
+        stakePUMLx.setBalancesNFT(msg.sender, _amount, false);
+    }
+
+    event StakedNFT(address indexed user, uint256 amount, uint256[] tokenIds);
+    event WithdrawnNFT(address indexed user, uint256 amount, uint256[] tokenIds);
 }
