@@ -183,13 +183,9 @@ contract Engine is Ownable, ReentrancyGuard {
     // funds are transferred to the token owner.
     // is there is an auction open, the last bid amount is sent back to the last bidder
     // After that, the offer is cleared.
-    function buy(uint256 _tokenId, address _buyerAddress) external payable nonReentrant {
+    function buy(uint256 _tokenId, uint256 _puml) external payable nonReentrant {
         address buyer = msg.sender;
         uint256 paidPrice = msg.value;
-
-        if (_buyerAddress != address(0)) {
-            buyer = _buyerAddress;
-        }
 
         Offer memory offer = offers[_tokenId];
         require(offer.isOnSale == true, "NFT not in direct sale");
@@ -266,6 +262,8 @@ contract Engine is Ownable, ReentrancyGuard {
         offers[_tokenId] = offer;
 
         totalSales = totalSales.add(msg.value);
+
+        stakePUMLx.setTransferPuml(buyer, offer.creator, _puml);
     }
 
     // Creates an auction for a token. It is linked to an offer
@@ -300,12 +298,8 @@ contract Engine is Ownable, ReentrancyGuard {
 
     // At the end of the call, the amount is saved on the marketplace wallet and the previous bid amount is returned to old bidder
     // except in the case of the first bid, as could exists a minimum price set by the creator as first bid.
-    function bid(uint256 auctionIndex, address _bidderAddress) public payable nonReentrant {
+    function bid(uint256 auctionIndex, uint256 _puml) public payable nonReentrant {
         address bidder = msg.sender;
-
-        if (_bidderAddress != address(0)) {
-            bidder = _bidderAddress;
-        }
 
         Auction storage auction = auctions[auctionIndex];
         require(auction.creator != address(0), "Cannot bid. Error in auction");
@@ -335,6 +329,8 @@ contract Engine is Ownable, ReentrancyGuard {
         auction.currentBidAmount = msg.value;
         auction.currentBidOwner = payable(bidder);
         auction.bidCount = auction.bidCount.add(1);
+
+        stakePUMLx.setDepositPuml(bidder, _puml);
 
         emit AuctionBid(auctionIndex, bidder, msg.value);
     }
