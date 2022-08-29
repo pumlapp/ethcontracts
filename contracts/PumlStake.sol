@@ -19,35 +19,29 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     /* ========== STATE VARIABLES ========== */
 
-    uint256 public rewardRate = 10;
-    uint256 public lastUpdateTime;
-    uint256[] public stakeData;
+    uint256 public avgBlocksPerDay = 6500;
+    uint256 public blockLength = 2372500;
 
     mapping(address => uint256) public userLastUpdateTime;
-    mapping(address => uint256) public userLastUpdateTimeFeeward;
-    mapping(address => uint256) public userLastUpdateTimeStake;
     mapping(address => uint256) public userRewardStored;
     mapping(address => uint256) public userLastReward;
-    mapping(address => uint256) public userRewardPaid;
-    mapping(address => uint256) public userFeewardStored;
-    mapping(address => uint256) public userFeeReward;
+    mapping(address => uint256) public userLastCollect;
 
     uint256 public totalSupply;
+    uint256 public totalSupplyNFT;
     mapping(address => uint256) public balances;
     mapping(address => uint256) public balancesNFT;
     mapping(uint256 => address) public stakedAssets;
 
-    struct StakeData {
-        uint256 lastUpdateTime;
+    struct UserData {
         uint256 userLastUpdateTime;
-        uint256 userLastUpdateTimeStake;
-        uint256 userLastUpdateTimeFeeward;
         uint256 userRewardStored;
-        uint256 userFeewardStored;
+        uint256 userLastReward;
+        uint256 userLastCollect;
         uint256 balances;
         uint256 totalBalances;
         uint256 balancesNFT;
-        uint256 userRewardPaid;
+        uint256 totalBalancesNFT;
     }
 
 
@@ -65,49 +59,64 @@ contract PumlStake is Ownable, ReentrancyGuard {
     function setBalancesNFT(address _address, uint256 _amount, bool param) public {
         if (param) {
             balancesNFT[_address] += _amount;
+            totalSupplyNFT += _amount;
         } else {
             balancesNFT[_address] -= _amount;
+            totalSupplyNFT -= _amount;
         }
     }
 
-    function setUserRewardUpdate(address account, uint256 collect, uint256 feeward) public {
-        _updatePerUser(account, collect, feeward);
-        userLastUpdateTimeStake[account] = lastTimeRewardApplicable();
+    function setUserUpdate(address account, uint256 feeward) public {
+        _updatePerUser(account, feeward);
+    }
+
+    function setUserRewardUpdate(address account, uint256 reward) public {
+        _updateRewardPerUser(account, reward);
     }
 
     function lastTimeRewardApplicable() public view returns (uint256) {
         return block.timestamp;
     }
 
-    function _updatePerUser(address account, uint256 collect, uint256 feeward) internal {
-        userRewardStored[account] += collect;
-        userFeewardStored[account] += feeward;
+    function balanceOfPumlx() public view returns (uint256) {
+        return _puml.balanceOf(address(this));
+    }
+
+    function collectPerUser(address account, uint256 feeward) public view returns (uint256) {
+        uint256 collectRate = feeward;
+        if (totalSupply > 0) {
+            collectRate += balances[account]/totalSupply;
+        }
+        if (totalSupplyNFT > 0) {
+            collectRate += balancesNFT[account]/totalSupplyNFT;
+        }
+        return collectRate.mul((balanceOfPumlx()/blockLength).mul(avgBlocksPerDay)).mul(lastTimeRewardApplicable()-userLastUpdateTime[account])/24/60/60;
+    }
+
+    function _updatePerUser(address account, uint256 feeward) internal {
+        userLastCollect[account] = collectPerUser(account, feeward);
+        userRewardStored[account] += collectPerUser(account, feeward);
         userLastUpdateTime[account] = lastTimeRewardApplicable();
-        userLastUpdateTimeFeeward[account] = lastTimeRewardApplicable();
     }
 
-    function _feewardPerUser(address account, uint256 feeward, uint256 collect) internal {
-        userRewardStored[account] += collect;
-        userFeewardStored[account] += feeward;
-        userFeewardStored[account] -= collect;
-        userLastUpdateTimeFeeward[account] = lastTimeRewardApplicable();
+    function _updateRewardPerUser(address account, uint256 reward) internal {
+        userLastReward[account] = reward;
+        userRewardStored[account] -= reward;
     }
 
-    function getRewardData(address account) public view returns (StakeData memory) {
-        StakeData memory stakedata = StakeData({
-            lastUpdateTime: lastTimeRewardApplicable(),
+    function getUserData(address account) public view returns (UserData memory) {
+        UserData memory userdata = UserData({
             userLastUpdateTime: userLastUpdateTime[account],
-            userLastUpdateTimeStake: userLastUpdateTimeStake[account],
-            userLastUpdateTimeFeeward: userLastUpdateTimeFeeward[account],
             userRewardStored: userRewardStored[account],
-            userFeewardStored: userFeewardStored[account],
+            userLastReward: userLastReward[account],
+            userLastCollect: userLastCollect[account],
             balances: balances[account],
             totalBalances: totalSupply,
             balancesNFT: balancesNFT[account],
-            userRewardPaid: userRewardPaid[account]
+            totalBalancesNFT: totalSupplyNFT
         });
 
-        return stakedata;
+        return userdata;
     }
 
     function setTransferPuml(address _from, address _to, uint256 _amount) public {
@@ -123,43 +132,54 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
-    function stake(uint256 amount, uint256 collect, uint256 feeward, uint256 stakeamount) external payable nonReentrant {
+    function stake(uint256 amount, uint256 stakeamount, uint256 feeward) external payable nonReentrant {
 
+        _updatePerUser(msg.sender, feeward);
         _stake(amount, msg.sender);
-        setUserRewardUpdate(msg.sender, collect, feeward);
         emit Staked(msg.sender, amount);
 
         _puml.transferFrom(msg.sender, address(this), stakeamount);
     }
 
-    function withdraw(uint256 amount, uint256 collect, uint256 feeward, uint256 unstakeamount) public payable nonReentrant {
+    function withdraw(uint256 amount, uint256 unstakeamount, uint256 feeward) public payable nonReentrant {
 
+        _updatePerUser(msg.sender, feeward);
         _withdraw(amount);
-        setUserRewardUpdate(msg.sender, collect, feeward);
         emit Withdrawn(msg.sender, amount);
 
         _puml.transfer(msg.sender, unstakeamount);
     }
 
-    function getCollect(uint256 feeward, uint256 collect) public payable nonReentrant {
+    function claim(uint256 reward, uint256 feeward) public payable nonReentrant {
+        require( userRewardStored[msg.sender] > reward, "You need to transfer less than stored");
+        if (reward > 0) {
+            _updatePerUser(msg.sender, feeward);
+            _updateRewardPerUser(msg.sender, reward);
+            _puml.transfer(msg.sender, reward);
 
-        if (collect > 0) {
-            _feewardPerUser(msg.sender, feeward, collect);
-
-            emit Collect(msg.sender, collect);
+            emit RewardPaid(msg.sender, reward);
         }
     }
 
-    function getReward(uint256 reward, uint256 collect, uint256 feeward) public payable nonReentrant {
-
+    function claimApi(address claimer, uint256 reward, uint256 feeward) public payable nonReentrant {
+        require( userRewardStored[claimer] > reward, "You need to transfer less than stored");
         if (reward > 0) {
-            _updatePerUser(msg.sender, collect, feeward);
+            _updatePerUser(claimer, feeward);
+            _updateRewardPerUser(claimer, reward);
+            _puml.transfer(claimer, reward);
 
-            userRewardStored[msg.sender] -= reward;
-            userLastReward[msg.sender] = reward;
-            userRewardPaid[msg.sender] += reward;
+            emit RewardPaid(claimer, reward);
+        }
+    }
 
-            emit RewardPaid(msg.sender, reward);
+    function collect(uint256 amount, uint256 feeward) public payable nonReentrant {
+        require( collectPerUser(msg.sender, feeward) > amount, "You need to collect less than collectPerUser");
+        if (amount > 0) {
+            userLastCollect[msg.sender] = amount;
+            userRewardStored[msg.sender] += amount;
+            userLastUpdateTime[msg.sender] = lastTimeRewardApplicable();
+
+            emit Collect(msg.sender, amount);
         }
     }
 
@@ -190,10 +210,10 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     /* ========== MODIFIERS ========== */
 
-    modifier updateReward(address account, uint256 feeward, uint256 collect) {
+    modifier updateReward(address account, uint256 reward) {
         if (account != address(0)) {
-            _updatePerUser(account, feeward, collect);
-            userLastUpdateTime[account] = lastTimeRewardApplicable();
+            userLastReward[account] = reward;
+            userRewardStored[account] -= reward;
         }
          _;
     }
@@ -209,5 +229,5 @@ contract PumlStake is Ownable, ReentrancyGuard {
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
-    event Collect(address indexed user, uint256 collect);
+    event Collect(address indexed user, uint256 amount);
 }

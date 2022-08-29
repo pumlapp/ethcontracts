@@ -489,7 +489,6 @@ contract Engine is Ownable, ReentrancyGuard {
         address _assetAddress,
         address _to, 
         uint256[] memory tokenIds,
-        uint256 collect,
         uint256 feeward
     ) external payable nonReentrant {
 
@@ -503,8 +502,8 @@ contract Engine is Ownable, ReentrancyGuard {
             // Save who is the staker/depositor of the token
             stakePUMLx.setStakedAssets(tokenIds[i], msg.sender);
         }
+        stakePUMLx.setUserUpdate(msg.sender, feeward);
         _stakeNFT(amount);
-        stakePUMLx.setUserRewardUpdate(msg.sender, collect, feeward);
         emit StakedNFT(msg.sender, amount, tokenIds);
     }
 
@@ -512,7 +511,6 @@ contract Engine is Ownable, ReentrancyGuard {
         address _assetAddress, 
         address _from, 
         uint256[] memory tokenIds,
-        uint256 collect,
         uint256 feeward
     ) public payable nonReentrant {
 
@@ -531,8 +529,8 @@ contract Engine is Ownable, ReentrancyGuard {
             // Cleanup stakedAssets for the current tokenId
             stakePUMLx.setStakedAssets(tokenIds[i], address(0));
         }
+        stakePUMLx.setUserUpdate(msg.sender, feeward);
         _withdrawNFT(amount);
-        stakePUMLx.setUserRewardUpdate(msg.sender, collect, feeward);
         emit WithdrawnNFT(msg.sender, amount, tokenIds);
     }
 
