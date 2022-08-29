@@ -26,6 +26,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
     mapping(address => uint256) public userRewardStored;
     mapping(address => uint256) public userLastReward;
     mapping(address => uint256) public userLastCollect;
+    mapping(address => uint256) public userRewardPaid;
 
     uint256 public totalSupply;
     uint256 public totalSupplyNFT;
@@ -36,6 +37,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
     struct UserData {
         uint256 userLastUpdateTime;
         uint256 userRewardStored;
+        uint256 userRewardPaid;
         uint256 userLastReward;
         uint256 userLastCollect;
         uint256 balances;
@@ -101,6 +103,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     function _updateRewardPerUser(address account, uint256 reward) internal {
         userLastReward[account] = reward;
+        userRewardPaid[account] += reward;
         userRewardStored[account] -= reward;
     }
 
@@ -108,6 +111,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
         UserData memory userdata = UserData({
             userLastUpdateTime: userLastUpdateTime[account],
             userRewardStored: userRewardStored[account],
+            userRewardPaid: userRewardPaid[account],
             userLastReward: userLastReward[account],
             userLastCollect: userLastCollect[account],
             balances: balances[account],
