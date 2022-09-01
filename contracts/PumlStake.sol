@@ -21,6 +21,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     uint256 public avgBlocksPerDay = 6500;
     uint256 public blockLength = 2372500;
+    uint256 public secondPerDay = 86400;
 
     mapping(address => uint256) public userLastUpdateTime;
     mapping(address => uint256) public userRewardStored;
@@ -92,7 +93,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
         if (totalSupplyNFT > 0) {
             collectRate += balancesNFT[account]/totalSupplyNFT;
         }
-        return collectRate.mul((balanceOfPumlx()/blockLength).mul(avgBlocksPerDay)).mul(lastTimeRewardApplicable()-userLastUpdateTime[account])/24/60/60;
+        return collectRate.mul((balanceOfPumlx()/blockLength).mul(avgBlocksPerDay)).mul(lastTimeRewardApplicable()-userLastUpdateTime[account])/secondPerDay;
     }
 
     function _updatePerUser(address account, uint256 feeward) internal {
