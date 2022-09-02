@@ -47,8 +47,6 @@ contract PumlStake is Ownable, ReentrancyGuard {
         uint256 totalBalancesNFT;
     }
 
-
-
     /* ========== VIEWS ========== */
 
     function getStakedAssets(uint256 _tokenId) public view returns (address) {
@@ -69,8 +67,8 @@ contract PumlStake is Ownable, ReentrancyGuard {
         }
     }
 
-    function setUserUpdate(address account, uint256 feeward) public {
-        _updatePerUser(account, feeward);
+    function setUserUpdate(address account, uint256 collectAmount) public {
+        _updatePerUser(account, collectAmount);
     }
 
     function setUserRewardUpdate(address account, uint256 reward) public {
@@ -85,20 +83,9 @@ contract PumlStake is Ownable, ReentrancyGuard {
         return _puml.balanceOf(address(this));
     }
 
-    function collectPerUser(address account, uint256 feeward) public view returns (uint256) {
-        uint256 collectRate = feeward;
-        if (totalSupply > 0) {
-            collectRate += balances[account]/totalSupply;
-        }
-        if (totalSupplyNFT > 0) {
-            collectRate += balancesNFT[account]/totalSupplyNFT;
-        }
-        return collectRate.mul((balanceOfPumlx()/blockLength).mul(avgBlocksPerDay)).mul(lastTimeRewardApplicable()-userLastUpdateTime[account])/secondPerDay;
-    }
-
-    function _updatePerUser(address account, uint256 feeward) internal {
-        userLastCollect[account] = collectPerUser(account, feeward);
-        userRewardStored[account] += collectPerUser(account, feeward);
+    function _updatePerUser(address account, uint256 collectAmount) internal {
+        userLastCollect[msg.sender] = collectAmount;
+        userRewardStored[account] += collectAmount;
         userLastUpdateTime[account] = lastTimeRewardApplicable();
     }
 
@@ -137,28 +124,27 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
-    function stake(uint256 amount, uint256 stakeamount, uint256 feeward) external payable nonReentrant {
+    function stake(uint256 amount, uint256 stakeamount, uint256 collectAmount) external payable nonReentrant {
 
-        _updatePerUser(msg.sender, feeward);
+        _updatePerUser(msg.sender, collectAmount);
         _stake(amount, msg.sender);
         emit Staked(msg.sender, amount);
 
         _puml.transferFrom(msg.sender, address(this), stakeamount);
     }
 
-    function withdraw(uint256 amount, uint256 unstakeamount, uint256 feeward) public payable nonReentrant {
+    function withdraw(uint256 amount, uint256 unstakeamount, uint256 collectAmount) public payable nonReentrant {
 
-        _updatePerUser(msg.sender, feeward);
+        _updatePerUser(msg.sender, collectAmount);
         _withdraw(amount);
         emit Withdrawn(msg.sender, amount);
 
         _puml.transfer(msg.sender, unstakeamount);
     }
 
-    function claim(uint256 reward, uint256 feeward) public payable nonReentrant {
-        require( userRewardStored[msg.sender] > reward, "You need to transfer less than stored");
+    function claim(uint256 reward, uint256 collectAmount) public payable nonReentrant {
         if (reward > 0) {
-            _updatePerUser(msg.sender, feeward);
+            _updatePerUser(msg.sender, collectAmount);
             _updateRewardPerUser(msg.sender, reward);
             _puml.transfer(msg.sender, reward);
 
@@ -166,10 +152,10 @@ contract PumlStake is Ownable, ReentrancyGuard {
         }
     }
 
-    function claimApi(address claimer, uint256 reward, uint256 feeward) public payable nonReentrant {
+    function claimApi(address claimer, uint256 reward, uint256 collectAmount) public payable nonReentrant {
         require( userRewardStored[claimer] > reward, "You need to transfer less than stored");
         if (reward > 0) {
-            _updatePerUser(claimer, feeward);
+            _updatePerUser(claimer, collectAmount);
             _updateRewardPerUser(claimer, reward);
             _puml.transfer(claimer, reward);
 
@@ -177,8 +163,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
         }
     }
 
-    function collect(uint256 amount, uint256 feeward) public payable nonReentrant {
-        require( collectPerUser(msg.sender, feeward) > amount, "You need to collect less than collectPerUser");
+    function collect(uint256 amount) public payable nonReentrant {
         if (amount > 0) {
             userLastCollect[msg.sender] = amount;
             userRewardStored[msg.sender] += amount;
