@@ -12,7 +12,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
     IERC20 _puml;
 
     constructor() {
-        _puml = IERC20(0xbc75ECc12c77506DCFd70113B15683A9a0768AB4);
+        _puml = IERC20(0xB2e408bc3E7674De7c589F4f8E5471C81F09F5c6);
     }
 
     using SafeMath for uint256;
