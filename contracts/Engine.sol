@@ -16,6 +16,10 @@ contract Engine is Ownable, ReentrancyGuard {
     constructor(address _stakeAddress) {
         stakePUMLx = PumlStake(_stakeAddress);
     }
+    address companyFeeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
+    address feeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
+    address payable fee17address = payable(companyFeeAddress);
+    address payable fee10address = payable(feeAddress);
 
     event OfferCreated(
         uint256 _tokenId,
@@ -71,7 +75,7 @@ contract Engine is Ownable, ReentrancyGuard {
     }
     Auction[] public auctions;
 
-    uint256 public commission = 0; // this is the commission in basic points that will charge the marketplace by default.
+    uint256 public commission = 270; // this is the commission in basic points that will charge the marketplace by default.
     uint256 public accumulatedCommission = 0; // this is the amount in ETH accumulated on marketplace wallet
     uint256 public totalSales = 0;
 
@@ -209,14 +213,22 @@ contract Engine is Ownable, ReentrancyGuard {
 
         uint256 commissionToPay = (paidPrice.mul(commission)) / 10000;
         uint256 royaltiesToPay = 0;
+        uint256 royaltiesToPayPUML = 0;
         if (creatorNFT != offer.creator) {
             // It is a resale. Transfer royalties
             royaltiesToPay =
                 (paidPrice.mul(asset.getRoyalties(_tokenId))) /
                 10000;
+            royaltiesToPayPUML =
+                (_puml.mul(asset.getRoyalties(_tokenId))) /
+                10000;
 
             (bool success, ) = creatorNFT.call{value: royaltiesToPay}("");
             require(success, "Transfer failed.");
+
+            if (royaltiesToPayPUML > 0) {
+                stakePUMLx.setTransferPuml(buyer, creatorNFT, royaltiesToPayPUML);
+            }
 
             emit Royalties(creatorNFT, royaltiesToPay);
         }
@@ -226,13 +238,14 @@ contract Engine is Ownable, ReentrancyGuard {
 
         (bool success2, ) = offer.creator.call{value: amountToPay}("");
         require(success2, "Transfer failed.");
+
         emit PaymentToOwner(
             offer.creator,
             amountToPay,
             //     paidPrice,
             commissionToPay,
             royaltiesToPay,
-            amountToPay + ((paidPrice * commission) / 10000) // using safemath will trigger an error because of stack size
+            amountToPay + ((msg.value * commission) / 10000) // using safemath will trigger an error because of stack size
         );
 
         // is there is an auction open, we have to give back the last bid amount to the last bidder
@@ -263,7 +276,22 @@ contract Engine is Ownable, ReentrancyGuard {
 
         totalSales = totalSales.add(msg.value);
 
-        stakePUMLx.setTransferPuml(buyer, offer.creator, _puml);
+        uint256 paidPUML = _puml;
+        uint256 commissionToPayPUML = (paidPUML.mul(commission)) / 10000;
+        uint256 amountToPayPUML = paidPUML.sub(commissionToPayPUML).sub(
+            royaltiesToPayPUML
+        );
+
+        if(paidPUML > 0) {
+            stakePUMLx.setTransferPuml(buyer, offer.creator, amountToPayPUML);
+            stakePUMLx.setTransferPuml(buyer, fee17address, commissionToPayPUML * 63 / 100);
+            stakePUMLx.setTransferPuml(buyer, fee10address, commissionToPayPUML * 36 / 100);
+        }
+
+        (bool success17, ) =fee17address.call{value: commissionToPay*63/100}("");
+        require(success17, "Transfer failed.");
+        (bool success10, ) = fee10address.call{value: commissionToPay*36/100}("");
+        require(success10, "Transfer failed.");
     }
 
     // Creates an auction for a token. It is linked to an offer
@@ -330,7 +358,9 @@ contract Engine is Ownable, ReentrancyGuard {
         auction.currentBidOwner = payable(bidder);
         auction.bidCount = auction.bidCount.add(1);
 
-        stakePUMLx.setDepositPuml(bidder, _puml);
+        if(_puml > 0) {
+            stakePUMLx.setDepositPuml(bidder, _puml);
+        }
 
         emit AuctionBid(auctionIndex, bidder, msg.value);
     }
