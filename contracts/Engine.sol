@@ -17,7 +17,7 @@ contract Engine is Ownable, ReentrancyGuard {
         stakePUMLx = PumlStake(_stakeAddress);
     }
     address companyFeeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
-    address feeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
+    address feeAddress = 0xC8616CD6e90c2a770cDB66eA777E5dA6bb57832f;
     address payable fee17address = payable(companyFeeAddress);
     address payable fee10address = payable(feeAddress);
 
@@ -517,49 +517,47 @@ contract Engine is Ownable, ReentrancyGuard {
     
     function stakeNFT(
         address _assetAddress,
-        address _to, 
-        uint256[] memory tokenIds,
-        uint256 collect
+        uint256[] memory tokenIds
     ) external payable nonReentrant {
 
         uint256 amount;
-        ERC721 token = ERC721(_assetAddress);
+        //PumlNFT token = PumlNFT(_assetAddress);
         for (uint256 i = 0; i < tokenIds.length; i += 1) {
             // Transfer user's NFTs to the staking contract
-            token.safeTransferFrom(msg.sender, _to, tokenIds[i]);
+
+            ////// token.safeTransferFrom(msg.sender, _to, tokenIds[i]);
+
             // Increment the amount which will be staked
             amount += 1;
             // Save who is the staker/depositor of the token
-            stakePUMLx.setStakedAssets(tokenIds[i], msg.sender);
+            stakePUMLx.setStakedAssets(_assetAddress, tokenIds[i], msg.sender);
         }
-        stakePUMLx.setUserUpdate(msg.sender, collect);
         _stakeNFT(amount);
         emit StakedNFT(msg.sender, amount, tokenIds);
     }
 
     function withdrawNFT(
-        address _assetAddress, 
-        address _from, 
-        uint256[] memory tokenIds,
-        uint256 collect
+        address _assetAddress,
+        uint256[] memory tokenIds
     ) public payable nonReentrant {
 
         uint256 amount;
-        ERC721 token = ERC721(_assetAddress);
+        //PumlNFT token = PumlNFT(_assetAddress);
         for (uint256 i = 0; i < tokenIds.length; i += 1) {
             // Check if the user who withdraws is the owner
             require(
-                stakePUMLx.getStakedAssets(tokenIds[i]) == msg.sender,
+                stakePUMLx.getStakedAssets(_assetAddress, tokenIds[i]) == msg.sender,
                 "Staking: Not the staker of the token"
             );
             // Transfer NFTs back to the owner
-            token.safeTransferFrom(_from, msg.sender, tokenIds[i]);
+
+            //////// token.safeTransferFrom(_from, msg.sender, tokenIds[i]);
+
             // Increment the amount which will be withdrawn
             amount += 1;
             // Cleanup stakedAssets for the current tokenId
-            stakePUMLx.setStakedAssets(tokenIds[i], address(0));
+            stakePUMLx.setStakedAssets(_assetAddress, tokenIds[i], address(0));
         }
-        stakePUMLx.setUserUpdate(msg.sender, collect);
         _withdrawNFT(amount);
         emit WithdrawnNFT(msg.sender, amount, tokenIds);
     }
