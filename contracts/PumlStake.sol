@@ -66,7 +66,7 @@ contract PumlStake is Ownable, ReentrancyGuard {
         if (param) {
             balancesNFT[_address] += _amount;
             if (balancesNFT[_address] == _amount) {
-               userLastUpdateTimeNFT[msg.sender] = lastTimeRewardApplicable(); 
+               userLastUpdateTimeNFT[_address] = lastTimeRewardApplicable(); 
             }
             totalSupplyNFT += _amount;
         } else {
