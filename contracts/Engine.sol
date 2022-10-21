@@ -12,14 +12,14 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 contract Engine is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     PumlStake public stakePUMLx;
+    address payable fee10address;
 
-    constructor(address _stakeAddress) {
+    constructor(address _stakeAddress, address _feeAddress) {
         stakePUMLx = PumlStake(_stakeAddress);
+        fee10address = payable(_feeAddress);
     }
     address companyFeeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
-    address feeAddress = 0xC8616CD6e90c2a770cDB66eA777E5dA6bb57832f;
     address payable fee17address = payable(companyFeeAddress);
-    address payable fee10address = payable(feeAddress);
 
     event OfferCreated(
         uint256 _tokenId,
@@ -538,7 +538,8 @@ contract Engine is Ownable, ReentrancyGuard {
 
     function withdrawNFT(
         address _assetAddress,
-        uint256[] memory tokenIds
+        uint256[] memory tokenIds,
+        uint256 _claimAmount
     ) public payable nonReentrant {
 
         uint256 amount;
@@ -558,7 +559,7 @@ contract Engine is Ownable, ReentrancyGuard {
             // Cleanup stakedAssets for the current tokenId
             stakePUMLx.setStakedAssets(_assetAddress, tokenIds[i], address(0));
         }
-        _withdrawNFT(amount);
+        _withdrawNFT(amount, _claimAmount);
         emit WithdrawnNFT(msg.sender, amount, tokenIds);
     }
 
@@ -566,8 +567,9 @@ contract Engine is Ownable, ReentrancyGuard {
         stakePUMLx.setBalancesNFT(msg.sender, _amount, true);
     }
 
-    function _withdrawNFT(uint256 _amount) internal {
+    function _withdrawNFT(uint256 _amount, uint256 _claimAmount) internal {
         stakePUMLx.setBalancesNFT(msg.sender, _amount, false);
+        stakePUMLx.nftRewardClaim(msg.sender, _claimAmount);
     }
 
     event StakedNFT(address indexed user, uint256 amount, uint256[] tokenIds);

@@ -14,11 +14,13 @@ contract PumlStake is Ownable, ReentrancyGuard {
     IERC20 _puml;
     PUMLx public _pumlxPool;
     PUMLx public _nftPool;
+    PUMLx public _feePool;
 
-    constructor(address _pumlxPoolAddress, address _nftPoolAddress) {
+    constructor(address _pumlxPoolAddress, address _nftPoolAddress, address _feePoolAddress) {
         _puml = IERC20(0xB2e408bc3E7674De7c589F4f8E5471C81F09F5c6);
         _pumlxPool = PUMLx(_pumlxPoolAddress);
         _nftPool = PUMLx(_nftPoolAddress);
+        _feePool = PUMLx(_feePoolAddress);
     }
 
     using SafeMath for uint256;
@@ -27,8 +29,12 @@ contract PumlStake is Ownable, ReentrancyGuard {
 
     mapping(address => uint256) public userLastUpdateTime;
     mapping(address => uint256) public userLastUpdateTimeNFT;
+    mapping(address => uint256) public userLastUpdateTimeFee;
     mapping(address => uint256) public userReward;
     mapping(address => uint256) public userLastReward;
+    mapping(address => uint256) public userNFTReward;
+    mapping(address => uint256) public userLastNFTReward;
+    mapping(address => uint256) public userRemainCollect;
     mapping(address => uint256) public userCollect;
     mapping(address => uint256) public userLastCollect;
 
@@ -42,12 +48,16 @@ contract PumlStake is Ownable, ReentrancyGuard {
     struct UserData {
         uint256 userLastUpdateTime;
         uint256 userLastUpdateTimeNFT;
+        uint256 userLastUpdateTimeFee;
         uint256 balances;
         uint256 totalBalances;
         uint256 balancesNFT;
         uint256 totalBalancesNFT;
         uint256 userReward;
         uint256 userLastReward;
+        uint256 userNFTReward;
+        uint256 userLastNFTReward;
+        uint256 userRemainCollect;
         uint256 userCollect;
         uint256 userLastCollect;
     }
@@ -75,6 +85,12 @@ contract PumlStake is Ownable, ReentrancyGuard {
         }
     }
 
+    function nftRewardClaim(address _address, uint256 _claimAmount) public {
+        userLastNFTReward[_address] = _claimAmount;
+        userNFTReward[_address] += _claimAmount;
+        _nftPool.transferPuml(_address, _claimAmount);
+    }
+
     function lastTimeRewardApplicable() public view returns (uint256) {
         return block.timestamp;
     }
@@ -83,14 +99,18 @@ contract PumlStake is Ownable, ReentrancyGuard {
         UserData memory userdata = UserData({
             userLastUpdateTime: userLastUpdateTime[account],
             userLastUpdateTimeNFT: userLastUpdateTimeNFT[account],
+            userLastUpdateTimeFee: userLastUpdateTimeFee[account],
             balances: balances[account],
             totalBalances: totalSupply,
             balancesNFT: balancesNFT[account],
             totalBalancesNFT: totalSupplyNFT,
             userReward: userReward[account],
             userLastReward: userLastReward[account],
+            userNFTReward: userNFTReward[account],
+            userLastNFTReward: userLastNFTReward[account],
             userCollect: userCollect[account],
-            userLastCollect: userLastCollect[account]
+            userLastCollect: userLastCollect[account],
+            userRemainCollect: userRemainCollect[account]
         });
 
         return userdata;
@@ -129,11 +149,13 @@ contract PumlStake is Ownable, ReentrancyGuard {
         _pumlxPool.transferPuml(msg.sender, claimAmount);
     }
 
-    function collectNftReward(uint256 collectAmount) public payable nonReentrant {
+    function collectFeeReward(uint256 collectAmount, uint256 totalCollectAmount) public payable nonReentrant {
+        userRemainCollect[msg.sender] = totalCollectAmount.sub(collectAmount);
+        userLastUpdateTimeFee[msg.sender] = lastTimeRewardApplicable();
         userCollect[msg.sender] += collectAmount;
         userLastCollect[msg.sender] = collectAmount;
 
-        _nftPool.transferPuml(msg.sender, collectAmount);
+        _feePool.transferPuml(msg.sender, collectAmount);
         emit RewardPaid(msg.sender, collectAmount);
     }
 
