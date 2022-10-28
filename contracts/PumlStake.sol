@@ -16,11 +16,11 @@ contract PumlStake is Ownable, ReentrancyGuard {
     PUMLx public _nftPool;
     PUMLx public _feePool;
 
-    constructor(address _pumlxPoolAddress, address _nftPoolAddress, address _feePoolAddress) {
+    constructor() {
         _puml = IERC20(0xB2e408bc3E7674De7c589F4f8E5471C81F09F5c6);
-        _pumlxPool = PUMLx(_pumlxPoolAddress);
-        _nftPool = PUMLx(_nftPoolAddress);
-        _feePool = PUMLx(_feePoolAddress);
+        _pumlxPool = PUMLx(0x0A50e179C57110edF83343D01D533214615e5cCF);
+        _nftPool = PUMLx(0x7714fE1D6BD1be63AF1D006Ddf6C6e1FA1da90C8);
+        _feePool = PUMLx(0x06BA79D856C477E71d492786029986fEEa4744a6);
     }
 
     using SafeMath for uint256;

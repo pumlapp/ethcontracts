@@ -12,14 +12,13 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 contract Engine is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     PumlStake public stakePUMLx;
-    address payable fee10address;
 
-    constructor(address _stakeAddress, address _feeAddress) {
+    constructor(address _stakeAddress) {
         stakePUMLx = PumlStake(_stakeAddress);
-        fee10address = payable(_feeAddress);
     }
     address companyFeeAddress = 0xDCBDB0dDB5A3a8DF116d7a02415DD0c4c39FbDaD;
     address payable fee17address = payable(companyFeeAddress);
+    address pumlfee10address = 0x06BA79D856C477E71d492786029986fEEa4744a6;
 
     event OfferCreated(
         uint256 _tokenId,
@@ -278,20 +277,16 @@ contract Engine is Ownable, ReentrancyGuard {
 
         uint256 paidPUML = _puml;
         uint256 commissionToPayPUML = (paidPUML.mul(commission)) / 10000;
-        uint256 amountToPayPUML = paidPUML.sub(commissionToPayPUML).sub(
-            royaltiesToPayPUML
-        );
+        uint256 amountToPayPUML = paidPUML.sub(commissionToPayPUML).sub(royaltiesToPayPUML);
 
         if(paidPUML > 0) {
             stakePUMLx.setTransferPuml(buyer, offer.creator, amountToPayPUML);
-            stakePUMLx.setTransferPuml(buyer, fee17address, commissionToPayPUML * 63 / 100);
-            stakePUMLx.setTransferPuml(buyer, fee10address, commissionToPayPUML * 36 / 100);
+            stakePUMLx.setTransferPuml(buyer, companyFeeAddress, commissionToPayPUML * 63 / 100);
+            stakePUMLx.setTransferPuml(buyer, pumlfee10address, commissionToPayPUML * 36 / 100);
         }
 
         (bool success17, ) =fee17address.call{value: commissionToPay*63/100}("");
         require(success17, "Transfer failed.");
-        (bool success10, ) = fee10address.call{value: commissionToPay*36/100}("");
-        require(success10, "Transfer failed.");
     }
 
     // Creates an auction for a token. It is linked to an offer
