@@ -27,7 +27,7 @@
 const Web3 = require("web3");
 const web3 = new Web3();
 
-const { projectId, mnemonic } = require('./secrets.json');
+const { projectId, mnemonic, etherscanAPIkey } = require('./secrets.json');
 const HDWalletProvider = require('@truffle/hdwallet-provider');
 
 module.exports = {
@@ -139,4 +139,8 @@ module.exports = {
       // }
     },
   },
+  plugins: ["truffle-plugin-verify"],
+  api_keys: {
+    etherscan: etherscanAPIkey
+  }
 };
